@@ -1,0 +1,31 @@
+version: "2"
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - gosec
+    - bodyclose
+    - sqlclosecheck
+    - rowserrcheck
+    - unconvert
+    - misspell
+    - revive
+  exclusions:
+    paths:
+      - internal/db/.*\.go$
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  exclusions:
+    paths:
+      - internal/db/.*\.go$
+
+run:
+  timeout: 5m

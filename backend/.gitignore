@@ -1,0 +1,13 @@
+# Environment with real credentials, never commit.
+.env
+
+# Build output.
+bin/
+
+# Test coverage artifacts.
+coverage.out
+coverage.html
+coverage
+
+context
+AGENTS.md

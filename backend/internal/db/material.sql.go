@@ -18,7 +18,10 @@ VALUES (
     $1,
     $2
 )
-RETURNING id, name, type
+RETURNING
+    id,
+    name,
+    type
 `
 
 type CreateMaterialParams struct {
@@ -31,6 +34,42 @@ func (q *Queries) CreateMaterial(ctx context.Context, arg CreateMaterialParams) 
 	var i Material
 	err := row.Scan(&i.ID, &i.Name, &i.Type)
 	return i, err
+}
+
+const findMaterials = `-- name: FindMaterials :many
+SELECT
+    id,
+    name,
+    type
+FROM materials
+WHERE name ILIKE '%' || $1::text || '%' ESCAPE '\'
+ORDER BY id
+LIMIT $2
+`
+
+type FindMaterialsParams struct {
+	Query string `json:"query"`
+	Limit int64  `json:"limit"`
+}
+
+func (q *Queries) FindMaterials(ctx context.Context, arg FindMaterialsParams) ([]Material, error) {
+	rows, err := q.db.Query(ctx, findMaterials, arg.Query, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Material
+	for rows.Next() {
+		var i Material
+		if err := rows.Scan(&i.ID, &i.Name, &i.Type); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getMaterial = `-- name: GetMaterial :one

@@ -10,6 +10,7 @@ import (
 
 type Querier interface {
 	CreateMaterial(ctx context.Context, arg CreateMaterialParams) (Material, error)
+	FindMaterials(ctx context.Context, arg FindMaterialsParams) ([]Material, error)
 	GetMaterial(ctx context.Context, id int64) (Material, error)
 	MaterialExists(ctx context.Context, id int64) (bool, error)
 }

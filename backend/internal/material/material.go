@@ -40,6 +40,11 @@ type Material struct {
 	Type Type
 }
 
+// Normalize trims the name.
+func (m *Material) Normalize() {
+	m.Name = strings.TrimSpace(m.Name)
+}
+
 // Validate rejects a material with a blank or overlong name,
 // or an unknown type.
 func (m Material) Validate() error {

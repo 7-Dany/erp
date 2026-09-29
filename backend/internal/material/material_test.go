@@ -124,3 +124,68 @@ func Test_Material_Validate(t *testing.T) {
 		}
 	})
 }
+
+func Test_Query_Normalize(t *testing.T) {
+	t.Run("trims the term and applies the default limit", func(t *testing.T) {
+		q := Query{Term: "  bopp "}
+
+		q.Normalize()
+
+		if q.Term != "bopp" {
+			t.Errorf("Term = %q, want %q", q.Term, "bopp")
+		}
+
+		if q.Limit != DefaultLimit {
+			t.Errorf("Limit = %d, want default %d", q.Limit, DefaultLimit)
+		}
+	})
+
+	t.Run("keeps an explicit limit", func(t *testing.T) {
+		q := Query{Term: "bopp", Limit: 10}
+
+		q.Normalize()
+
+		if q.Limit != 10 {
+			t.Errorf("Limit = %d, want 10", q.Limit)
+		}
+	})
+}
+
+func Test_Query_Validate(t *testing.T) {
+	t.Run("accepts a normalized query", func(t *testing.T) {
+		q := Query{Term: "bopp"}
+		q.Normalize()
+
+		if err := q.Validate(); err != nil {
+			t.Fatalf("Validate() error = %v, want nil", err)
+		}
+	})
+
+	t.Run("rejects a blank term", func(t *testing.T) {
+		for _, term := range []string{"", "   "} {
+			q := Query{Term: term, Limit: DefaultLimit}
+
+			if err := q.Validate(); !errors.Is(err, ErrInvalid) {
+				t.Errorf("Validate() term %q error = %v, want ErrInvalid", term, err)
+			}
+		}
+	})
+
+	t.Run("rejects a term below the minimum length", func(t *testing.T) {
+		q := Query{Term: "P", Limit: DefaultLimit}
+
+		if err := q.Validate(); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("Validate() error = %v, want ErrInvalid", err)
+		}
+	})
+
+	t.Run("rejects a limit outside the allowed range", func(t *testing.T) {
+		for _, limit := range []int{-1, 1, 9, 51} {
+			q := Query{Term: "bopp", Limit: limit}
+
+			if err := q.Validate(); !errors.Is(err, ErrInvalid) {
+				t.Errorf("Validate() limit %d error = %v, want ErrInvalid", limit, err)
+			}
+		}
+	})
+}

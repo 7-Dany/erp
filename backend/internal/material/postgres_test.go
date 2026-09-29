@@ -97,8 +97,6 @@ func Test_PostgresRepository_Create(t *testing.T) {
 		}
 	})
 
-	// Alt path 1.1: validation rules are covered in Test_Material_Validate;
-	// this checks Create enforces them.
 	t.Run("rejects an invalid material", func(t *testing.T) {
 		_, err := repository.Create(ctx, Material{
 			Name: "   ",
@@ -239,6 +237,200 @@ func Test_PostgresRepository_Get(t *testing.T) {
 		_, err := repository.Get(ctx, 1)
 		if !errors.Is(err, puddle.ErrClosedPool) {
 			t.Fatalf("Get() error = %v, want closed pool", err)
+		}
+	})
+}
+
+func Test_PostgresRepository_Find(t *testing.T) {
+	ctx := context.Background()
+
+	repository, pool := testutil.NewRepository(t, NewPostgresRepository, "materials")
+	t.Cleanup(pool.Close)
+
+	seed := func(t *testing.T, name string) Material {
+		t.Helper()
+
+		created, err := repository.Create(ctx, Material{
+			Name: name,
+			Type: RawMaterial,
+		})
+		if err != nil {
+			t.Fatalf("Create(%q) error = %v", name, err)
+		}
+
+		return created
+	}
+
+	t.Run("returns each match once ordered by ID with ID name and type", func(t *testing.T) {
+		first := seed(t, "BOPP 20UM")
+
+		second, err := repository.Create(ctx, Material{
+			Name: "BOPP FILM 20 MICRON",
+			Type: Packaging,
+		})
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		seed(t, "unrelated coating")
+
+		got, err := repository.Find(ctx, Query{Term: "BOPP", Limit: 0})
+		if err != nil {
+			t.Fatalf("Find() error = %v", err)
+		}
+
+		if len(got) != 2 {
+			t.Fatalf("Find() returned %d materials, want 2", len(got))
+		}
+
+		if got[0] != first || got[1] != second {
+			t.Errorf("Find() = %+v, want [%+v %+v]", got, first, second)
+		}
+	})
+
+	t.Run("returns an empty list when nothing matches", func(t *testing.T) {
+		got, err := repository.Find(ctx, Query{Term: "no such material xyz", Limit: 0})
+		if err != nil {
+			t.Fatalf("Find() error = %v", err)
+		}
+
+		if len(got) != 0 {
+			t.Fatalf("Find() returned %+v, want empty", got)
+		}
+	})
+
+	t.Run("rejects blank and too-short entries", func(t *testing.T) {
+		for _, query := range []string{"", "   ", "P"} {
+			_, err := repository.Find(ctx, Query{Term: query})
+			if !errors.Is(err, ErrInvalid) {
+				t.Errorf("Find(%q) error = %v, want ErrInvalid", query, err)
+			}
+		}
+	})
+
+	t.Run("accepts a two-character entry", func(t *testing.T) {
+		first := seed(t, "aluminum rod")
+		second := seed(t, "aluminum tube")
+
+		got, err := repository.Find(ctx, Query{Term: "al", Limit: 0})
+		if err != nil {
+			t.Fatalf("Find() error = %v", err)
+		}
+
+		if len(got) != 2 || got[0] != first || got[1] != second {
+			t.Fatalf("Find() = %+v, want [%+v %+v]", got, first, second)
+		}
+	})
+
+	t.Run("shows the first limit rows and validates the limit", func(t *testing.T) {
+		for _, limit := range []int{-100, -1, 1, 9, 51, 1000} {
+			_, err := repository.Find(ctx, Query{Term: "bulk film", Limit: limit})
+			if !errors.Is(err, ErrInvalid) {
+				t.Errorf("Find(limit=%d) error = %v, want ErrInvalid", limit, err)
+			}
+		}
+
+		if DefaultLimit != 20 {
+			t.Fatalf("DefaultLimit = %d, want 20", DefaultLimit)
+		}
+
+		var created []Material
+		for i := 0; i < 21; i++ {
+			created = append(created, seed(t, "bulk film batch"))
+		}
+
+		got, err := repository.Find(ctx, Query{Term: "bulk film", Limit: 10})
+		if err != nil {
+			t.Fatalf("Find() error = %v", err)
+		}
+
+		if len(got) != 10 {
+			t.Fatalf("Find() returned %d materials, want 10", len(got))
+		}
+
+		for i, want := range created[:10] {
+			if got[i] != want {
+				t.Fatalf("Find()[%d] = %+v, want %+v", i, got[i], want)
+			}
+		}
+
+		got, err = repository.Find(ctx, Query{Term: "bulk film", Limit: 0})
+		if err != nil {
+			t.Fatalf("Find() error = %v", err)
+		}
+
+		if len(got) != 20 {
+			t.Fatalf("Find() returned %d materials, want default 20", len(got))
+		}
+
+		var ranged []Material
+		for i := 0; i < 50; i++ {
+			ranged = append(ranged, seed(t, "limit range spool"))
+		}
+
+		got, err = repository.Find(ctx, Query{Term: "limit range spool", Limit: 50})
+		if err != nil {
+			t.Fatalf("Find() error = %v", err)
+		}
+
+		if len(got) != 50 {
+			t.Fatalf("Find() returned %d materials, want upper boundary 50", len(got))
+		}
+
+		for i, want := range ranged {
+			if got[i] != want {
+				t.Fatalf("Find()[%d] = %+v, want %+v", i, got[i], want)
+			}
+		}
+	})
+
+	t.Run("returns an error when the database is unavailable", func(t *testing.T) {
+		repository := testutil.NewClosedRepository(t, NewPostgresRepository)
+
+		_, err := repository.Find(ctx, Query{Term: "BOPP", Limit: 0})
+		if !errors.Is(err, puddle.ErrClosedPool) {
+			t.Fatalf("Find() error = %v, want closed pool", err)
+		}
+	})
+
+	t.Run("trims the entry and matches case-insensitively", func(t *testing.T) {
+		want := seed(t, "BOPP 20UM grade")
+
+		got, err := repository.Find(ctx, Query{Term: "  bopp 20um grade ", Limit: 0})
+		if err != nil {
+			t.Fatalf("Find() error = %v", err)
+		}
+
+		if len(got) != 1 || got[0] != want {
+			t.Fatalf("Find() = %+v, want [%+v]", got, want)
+		}
+	})
+
+	t.Run("shows similar names without picking one", func(t *testing.T) {
+		first := seed(t, "polypropylene HOMO")
+		second := seed(t, "polypropylene COPO")
+
+		got, err := repository.Find(ctx, Query{Term: "polypropylene", Limit: 0})
+		if err != nil {
+			t.Fatalf("Find() error = %v", err)
+		}
+
+		if len(got) != 2 || got[0] != first || got[1] != second {
+			t.Fatalf("Find() = %+v, want both matches unpicked", got)
+		}
+	})
+
+	t.Run("returns the matches for the employee to confirm against", func(t *testing.T) {
+		first := seed(t, "steel sheet")
+		second := seed(t, "steel strip")
+
+		got, err := repository.Find(ctx, Query{Term: "steel", Limit: 0})
+		if err != nil {
+			t.Fatalf("Find() error = %v", err)
+		}
+
+		if len(got) != 2 || got[0] != first || got[1] != second {
+			t.Fatalf("Find() = %+v, want both matches for confirm step", got)
 		}
 	})
 }

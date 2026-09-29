@@ -7,6 +7,9 @@ CREATE TABLE materials(
     type MATERIAL_TYPE NOT NULL
 );
 
+CREATE INDEX materials_name_trgm_idx ON materials USING gin (name gin_trgm_ops);
+
 -- +goose Down
+DROP INDEX IF EXISTS materials_name_trgm_idx;
 DROP TABLE materials;
 DROP TYPE MATERIAL_TYPE;

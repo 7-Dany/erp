@@ -62,5 +62,30 @@ func run(ctx context.Context) error {
 	}
 	fmt.Printf("Get(%d): %+v\n", created.ID, stored)
 
+	for _, name := range []string{"Demo BOPP 20UM", "Demo BOPP Film", "Demo Copper Wire"} {
+		if _, err := repository.Create(ctx, material.Material{
+			Name: name,
+			Type: material.RawMaterial,
+		}); err != nil {
+			return err
+		}
+	}
+
+	matches, err := repository.Find(ctx, material.Query{Term: "bopp"})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Find(%q): %+v\n", "bopp", matches)
+
+	none, err := repository.Find(ctx, material.Query{Term: "no-such-demo-xyz"})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Find(%q): %+v\n", "no-such-demo-xyz", none)
+
+	if _, err := repository.Find(ctx, material.Query{Term: " "}); err != nil {
+		fmt.Printf("Find(blank): %v\n", err)
+	}
+
 	return nil
 }

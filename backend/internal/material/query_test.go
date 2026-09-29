@@ -2,6 +2,7 @@ package material
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -62,8 +63,24 @@ func Test_Query_Validate(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects a term with a NUL byte", func(t *testing.T) {
+		q := Query{Term: "bo\x00pp", Limit: DefaultLimit}
+
+		if err := q.Validate(); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("Validate() error = %v, want ErrInvalid", err)
+		}
+	})
+
 	t.Run("rejects a term below the minimum length", func(t *testing.T) {
 		q := Query{Term: "P", Limit: DefaultLimit}
+
+		if err := q.Validate(); !errors.Is(err, ErrInvalid) {
+			t.Fatalf("Validate() error = %v, want ErrInvalid", err)
+		}
+	})
+
+	t.Run("rejects a term over the maximum length", func(t *testing.T) {
+		q := Query{Term: strings.Repeat("a", MaxNameLength+1), Limit: DefaultLimit}
 
 		if err := q.Validate(); !errors.Is(err, ErrInvalid) {
 			t.Fatalf("Validate() error = %v, want ErrInvalid", err)

@@ -40,10 +40,22 @@ func (q *Query) Validate() error {
 		return fmt.Errorf("%w: search term is required", ErrInvalid)
 	}
 
+	if strings.ContainsRune(q.Term, 0) {
+		return fmt.Errorf("%w: search term contains a NUL byte", ErrInvalid)
+	}
+
 	if utf8.RuneCountInString(q.Term) < MinQueryLength {
 		return fmt.Errorf(
 			"%w: search term is too short, narrow it down",
 			ErrInvalid,
+		)
+	}
+
+	if utf8.RuneCountInString(q.Term) > MaxNameLength {
+		return fmt.Errorf(
+			"%w: search term exceeds %d characters",
+			ErrInvalid,
+			MaxNameLength,
 		)
 	}
 

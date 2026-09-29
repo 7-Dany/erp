@@ -45,10 +45,12 @@ func (m *Material) Normalize() {
 	m.Name = strings.TrimSpace(m.Name)
 }
 
-// Validate rejects a material with a blank or overlong name,
+// Validate normalizes then rejects a material with a blank or overlong name,
 // or an unknown type.
-func (m Material) Validate() error {
-	if strings.TrimSpace(m.Name) == "" {
+func (m *Material) Validate() error {
+	m.Normalize()
+
+	if m.Name == "" {
 		return fmt.Errorf("%w: name is required", ErrInvalid)
 	}
 

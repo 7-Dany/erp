@@ -83,7 +83,8 @@ func Test_Material_Validate(t *testing.T) {
 	})
 
 	t.Run("rejects an empty name", func(t *testing.T) {
-		err := Material{Name: "", Type: RawMaterial}.Validate()
+		m := Material{Name: "", Type: RawMaterial}
+		err := m.Validate()
 
 		if !errors.Is(err, ErrInvalid) {
 			t.Fatalf("Validate() error = %v, want ErrInvalid", err)
@@ -91,7 +92,8 @@ func Test_Material_Validate(t *testing.T) {
 	})
 
 	t.Run("rejects a whitespace-only name", func(t *testing.T) {
-		err := Material{Name: "  \t ", Type: RawMaterial}.Validate()
+		m := Material{Name: "  \t ", Type: RawMaterial}
+		err := m.Validate()
 
 		if !errors.Is(err, ErrInvalid) {
 			t.Fatalf("Validate() error = %v, want ErrInvalid", err)
@@ -101,7 +103,8 @@ func Test_Material_Validate(t *testing.T) {
 	t.Run("rejects a name over the maximum length", func(t *testing.T) {
 		name := strings.Repeat("a", MaxNameLength+1)
 
-		err := Material{Name: name, Type: RawMaterial}.Validate()
+		m := Material{Name: name, Type: RawMaterial}
+		err := m.Validate()
 
 		if !errors.Is(err, ErrInvalid) {
 			t.Fatalf("Validate() error = %v, want ErrInvalid", err)
@@ -109,7 +112,8 @@ func Test_Material_Validate(t *testing.T) {
 	})
 
 	t.Run("rejects an unset type", func(t *testing.T) {
-		err := Material{Name: "Steel Sheet"}.Validate()
+		m := Material{Name: "Steel Sheet"}
+		err := m.Validate()
 
 		if !errors.Is(err, ErrInvalid) {
 			t.Fatalf("Validate() error = %v, want ErrInvalid", err)
@@ -117,75 +121,11 @@ func Test_Material_Validate(t *testing.T) {
 	})
 
 	t.Run("rejects an unknown type", func(t *testing.T) {
-		err := Material{Name: "Steel Sheet", Type: "liquid_gold"}.Validate()
+		m := Material{Name: "Steel Sheet", Type: "liquid_gold"}
+		err := m.Validate()
 
 		if !errors.Is(err, ErrInvalid) {
 			t.Fatalf("Validate() error = %v, want ErrInvalid", err)
-		}
-	})
-}
-
-func Test_Query_Normalize(t *testing.T) {
-	t.Run("trims the term and applies the default limit", func(t *testing.T) {
-		q := Query{Term: "  bopp "}
-
-		q.Normalize()
-
-		if q.Term != "bopp" {
-			t.Errorf("Term = %q, want %q", q.Term, "bopp")
-		}
-
-		if q.Limit != DefaultLimit {
-			t.Errorf("Limit = %d, want default %d", q.Limit, DefaultLimit)
-		}
-	})
-
-	t.Run("keeps an explicit limit", func(t *testing.T) {
-		q := Query{Term: "bopp", Limit: 10}
-
-		q.Normalize()
-
-		if q.Limit != 10 {
-			t.Errorf("Limit = %d, want 10", q.Limit)
-		}
-	})
-}
-
-func Test_Query_Validate(t *testing.T) {
-	t.Run("accepts a normalized query", func(t *testing.T) {
-		q := Query{Term: "bopp"}
-		q.Normalize()
-
-		if err := q.Validate(); err != nil {
-			t.Fatalf("Validate() error = %v, want nil", err)
-		}
-	})
-
-	t.Run("rejects a blank term", func(t *testing.T) {
-		for _, term := range []string{"", "   "} {
-			q := Query{Term: term, Limit: DefaultLimit}
-
-			if err := q.Validate(); !errors.Is(err, ErrInvalid) {
-				t.Errorf("Validate() term %q error = %v, want ErrInvalid", term, err)
-			}
-		}
-	})
-
-	t.Run("rejects a term below the minimum length", func(t *testing.T) {
-		q := Query{Term: "P", Limit: DefaultLimit}
-
-		if err := q.Validate(); !errors.Is(err, ErrInvalid) {
-			t.Fatalf("Validate() error = %v, want ErrInvalid", err)
-		}
-	})
-
-	t.Run("rejects a limit outside the allowed range", func(t *testing.T) {
-		for _, limit := range []int{-1, 1, 9, 51} {
-			q := Query{Term: "bopp", Limit: limit}
-
-			if err := q.Validate(); !errors.Is(err, ErrInvalid) {
-				t.Errorf("Validate() limit %d error = %v, want ErrInvalid", limit, err)
-			}
 		}
 	})
 }

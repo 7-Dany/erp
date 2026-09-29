@@ -31,10 +31,12 @@ func (q *Query) Normalize() {
 	}
 }
 
-// Validate rejects a blank or too-short term, or a limit outside the
-// allowed range. Call Normalize first.
-func (q Query) Validate() error {
-	if strings.TrimSpace(q.Term) == "" {
+// Validate normalizes then rejects a blank or too-short term,
+// or a limit outside the allowed range.
+func (q *Query) Validate() error {
+	q.Normalize()
+
+	if q.Term == "" {
 		return fmt.Errorf("%w: search term is required", ErrInvalid)
 	}
 

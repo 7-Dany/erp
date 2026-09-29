@@ -23,8 +23,6 @@ func NewPostgresRepository(queries db.Querier) *PostgresRepository {
 
 // Create validates, trims, and stores a new material.
 func (p *PostgresRepository) Create(ctx context.Context, material Material) (Material, error) {
-	material.Normalize()
-
 	if err := material.Validate(); err != nil {
 		return Material{}, fmt.Errorf("create material: %w", err)
 	}
@@ -77,8 +75,6 @@ func (p *PostgresRepository) Get(ctx context.Context, id int64) (Material, error
 // up to the query limit. It never picks: every match is returned for the
 // caller to choose from.
 func (p *PostgresRepository) Find(ctx context.Context, query Query) ([]Material, error) {
-	query.Normalize()
-
 	if err := query.Validate(); err != nil {
 		return nil, fmt.Errorf("find materials: %w", err)
 	}

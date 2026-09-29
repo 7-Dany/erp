@@ -46,36 +46,6 @@ func (p *PostgresRepository) Create(ctx context.Context, material Material) (Mat
 	}, nil
 }
 
-// Find returns materials whose name contains the query term
-// (case-insensitive), ordered by ID, at most the query limit rows.
-// It picks nothing: every match is returned for the caller to choose from.
-func (p *PostgresRepository) Find(ctx context.Context, query Query) ([]Material, error) {
-	query.Normalize()
-
-	if err := query.Validate(); err != nil {
-		return nil, fmt.Errorf("find materials: %w", err)
-	}
-
-	rows, err := p.queries.FindMaterials(ctx, db.FindMaterialsParams{
-		Query: query.EscapeTerm(),
-		Limit: int64(query.Limit),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("find materials: %w", err)
-	}
-
-	materials := make([]Material, 0, len(rows))
-	for _, row := range rows {
-		materials = append(materials, Material{
-			ID:   row.ID,
-			Name: row.Name,
-			Type: Type(row.Type),
-		})
-	}
-
-	return materials, nil
-}
-
 // Exists reports whether a material with the given ID exists.
 func (p *PostgresRepository) Exists(ctx context.Context, id int64) (bool, error) {
 	exists, err := p.queries.MaterialExists(ctx, id)
@@ -101,6 +71,36 @@ func (p *PostgresRepository) Get(ctx context.Context, id int64) (Material, error
 		Name: row.Name,
 		Type: Type(row.Type),
 	}, nil
+}
+
+// Find returns materials whose name contains the query term, ordered by ID,
+// up to the query limit. It never picks: every match is returned for the
+// caller to choose from.
+func (p *PostgresRepository) Find(ctx context.Context, query Query) ([]Material, error) {
+	query.Normalize()
+
+	if err := query.Validate(); err != nil {
+		return nil, fmt.Errorf("find materials: %w", err)
+	}
+
+	rows, err := p.queries.FindMaterials(ctx, db.FindMaterialsParams{
+		Query: query.EscapeTerm(),
+		Limit: int64(query.Limit),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("find materials: %w", err)
+	}
+
+	materials := make([]Material, 0, len(rows))
+	for _, row := range rows {
+		materials = append(materials, Material{
+			ID:   row.ID,
+			Name: row.Name,
+			Type: Type(row.Type),
+		})
+	}
+
+	return materials, nil
 }
 
 var _ Repository = (*PostgresRepository)(nil)

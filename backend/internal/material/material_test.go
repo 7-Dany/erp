@@ -128,4 +128,30 @@ func Test_Material_Validate(t *testing.T) {
 			t.Fatalf("Validate() error = %v, want ErrInvalid", err)
 		}
 	})
+
+	t.Run("rejects a whitespace-only type", func(t *testing.T) {
+		m := Material{Name: "Steel Sheet", Type: "  "}
+		err := m.Validate()
+
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("Validate() error = %v, want ErrInvalid", err)
+		}
+	})
+
+	t.Run("rejects a mistyped-case type", func(t *testing.T) {
+		m := Material{Name: "Steel Sheet", Type: "RAW_MATERIAL"}
+		err := m.Validate()
+
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("Validate() error = %v, want ErrInvalid", err)
+		}
+	})
+
+	t.Run("accepts unspecified as a type", func(t *testing.T) {
+		m := Material{Name: "Mystery Drum", Type: Unspecified}
+
+		if err := m.Validate(); err != nil {
+			t.Fatalf("Validate() error = %v, want nil", err)
+		}
+	})
 }

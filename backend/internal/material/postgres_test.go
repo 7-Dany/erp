@@ -97,6 +97,34 @@ func Test_PostgresRepository_Create(t *testing.T) {
 		}
 	})
 
+	t.Run("stores and returns each supported type", func(t *testing.T) {
+		for _, typ := range []Type{
+			Unspecified, RawMaterial, Packaging,
+			SemiFinished, FinishedProduct, SparePart,
+		} {
+			created, err := repository.Create(ctx, Material{
+				Name: "Typed Material",
+				Type: typ,
+			})
+			if err != nil {
+				t.Fatalf("Create() type %q error = %v", typ, err)
+			}
+
+			if created.Type != typ {
+				t.Errorf("Create() type = %q, want %q", created.Type, typ)
+			}
+
+			stored, err := repository.Get(ctx, created.ID)
+			if err != nil {
+				t.Fatalf("Get() type %q error = %v", typ, err)
+			}
+
+			if stored.Type != typ {
+				t.Errorf("persisted type = %q, want %q", stored.Type, typ)
+			}
+		}
+	})
+
 	t.Run("rejects an invalid material", func(t *testing.T) {
 		_, err := repository.Create(ctx, Material{
 			Name: "   ",

@@ -9,6 +9,29 @@ import (
 	"context"
 )
 
+const addMaterialSpecs = `-- name: AddMaterialSpecs :exec
+INSERT INTO material_specs (
+    material_id,
+    name,
+    value
+)
+SELECT
+    $1,
+    unnest($2::text[]),
+    unnest($3::text[])
+`
+
+type AddMaterialSpecsParams struct {
+	MaterialID int64    `json:"material_id"`
+	Names      []string `json:"names"`
+	SpecValues []string `json:"spec_values"`
+}
+
+func (q *Queries) AddMaterialSpecs(ctx context.Context, arg AddMaterialSpecsParams) error {
+	_, err := q.db.Exec(ctx, addMaterialSpecs, arg.MaterialID, arg.Names, arg.SpecValues)
+	return err
+}
+
 const createMaterial = `-- name: CreateMaterial :one
 INSERT INTO materials (
     name,
@@ -32,6 +55,65 @@ type CreateMaterialParams struct {
 func (q *Queries) CreateMaterial(ctx context.Context, arg CreateMaterialParams) (Material, error) {
 	row := q.db.QueryRow(ctx, createMaterial, arg.Name, arg.Type)
 	var i Material
+	err := row.Scan(&i.ID, &i.Name, &i.Type)
+	return i, err
+}
+
+const createMaterialWithSpecs = `-- name: CreateMaterialWithSpecs :one
+WITH created AS (
+    INSERT INTO materials (
+        name,
+        type
+    )
+    VALUES (
+        $1,
+        $2
+    )
+    RETURNING
+        id,
+        name,
+        type
+),
+spec AS (
+    INSERT INTO material_specs (
+        material_id,
+        name,
+        value
+    )
+    SELECT
+        created.id,
+        unnest($3::text[]),
+        unnest($4::text[])
+    FROM created
+)
+SELECT
+    id,
+    name,
+    type
+FROM created
+`
+
+type CreateMaterialWithSpecsParams struct {
+	Name       string       `json:"name"`
+	Type       MaterialType `json:"type"`
+	Names      []string     `json:"names"`
+	SpecValues []string     `json:"spec_values"`
+}
+
+type CreateMaterialWithSpecsRow struct {
+	ID   int64        `json:"id"`
+	Name string       `json:"name"`
+	Type MaterialType `json:"type"`
+}
+
+func (q *Queries) CreateMaterialWithSpecs(ctx context.Context, arg CreateMaterialWithSpecsParams) (CreateMaterialWithSpecsRow, error) {
+	row := q.db.QueryRow(ctx, createMaterialWithSpecs,
+		arg.Name,
+		arg.Type,
+		arg.Names,
+		arg.SpecValues,
+	)
+	var i CreateMaterialWithSpecsRow
 	err := row.Scan(&i.ID, &i.Name, &i.Type)
 	return i, err
 }
@@ -86,6 +168,40 @@ func (q *Queries) GetMaterial(ctx context.Context, id int64) (Material, error) {
 	var i Material
 	err := row.Scan(&i.ID, &i.Name, &i.Type)
 	return i, err
+}
+
+const getMaterialSpecs = `-- name: GetMaterialSpecs :many
+SELECT
+    name,
+    value
+FROM material_specs
+WHERE material_id = $1
+ORDER BY name
+`
+
+type GetMaterialSpecsRow struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+func (q *Queries) GetMaterialSpecs(ctx context.Context, materialID int64) ([]GetMaterialSpecsRow, error) {
+	rows, err := q.db.Query(ctx, getMaterialSpecs, materialID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetMaterialSpecsRow
+	for rows.Next() {
+		var i GetMaterialSpecsRow
+		if err := rows.Scan(&i.Name, &i.Value); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const materialExists = `-- name: MaterialExists :one

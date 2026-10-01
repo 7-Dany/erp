@@ -18,6 +18,7 @@ const (
 	MaterialTypeSemiFinished    MaterialType = "semi_finished"
 	MaterialTypeFinishedProduct MaterialType = "finished_product"
 	MaterialTypeSparePart       MaterialType = "spare_part"
+	MaterialTypeConsumable      MaterialType = "consumable"
 )
 
 func (e *MaterialType) Scan(src interface{}) error {
@@ -62,7 +63,8 @@ func (e MaterialType) Valid() bool {
 		MaterialTypePackaging,
 		MaterialTypeSemiFinished,
 		MaterialTypeFinishedProduct,
-		MaterialTypeSparePart:
+		MaterialTypeSparePart,
+		MaterialTypeConsumable:
 		return true
 	}
 	return false
@@ -76,6 +78,7 @@ func AllMaterialTypeValues() []MaterialType {
 		MaterialTypeSemiFinished,
 		MaterialTypeFinishedProduct,
 		MaterialTypeSparePart,
+		MaterialTypeConsumable,
 	}
 }
 
@@ -83,4 +86,10 @@ type Material struct {
 	ID   int64        `json:"id"`
 	Name string       `json:"name"`
 	Type MaterialType `json:"type"`
+}
+
+type MaterialSpec struct {
+	MaterialID int64  `json:"material_id"`
+	Name       string `json:"name"`
+	Value      string `json:"value"`
 }

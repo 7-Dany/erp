@@ -9,9 +9,12 @@ import (
 )
 
 type Querier interface {
+	AddMaterialSpecs(ctx context.Context, arg AddMaterialSpecsParams) error
 	CreateMaterial(ctx context.Context, arg CreateMaterialParams) (Material, error)
+	CreateMaterialWithSpecs(ctx context.Context, arg CreateMaterialWithSpecsParams) (CreateMaterialWithSpecsRow, error)
 	FindMaterials(ctx context.Context, arg FindMaterialsParams) ([]Material, error)
 	GetMaterial(ctx context.Context, id int64) (Material, error)
+	GetMaterialSpecs(ctx context.Context, materialID int64) ([]GetMaterialSpecsRow, error)
 	MaterialExists(ctx context.Context, id int64) (bool, error)
 }
 

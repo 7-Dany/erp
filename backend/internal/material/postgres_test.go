@@ -4,6 +4,7 @@ import (
 	"context"
 	"erp/internal/testutil"
 	"errors"
+	"reflect"
 	"testing"
 
 	"github.com/jackc/puddle/v2"
@@ -12,7 +13,7 @@ import (
 func Test_PostgresRepository_Create(t *testing.T) {
 	ctx := context.Background()
 
-	repository, pool := testutil.NewRepository(t, NewPostgresRepository, "materials")
+	repository, pool := testutil.NewRepository(t, NewPostgresRepository, "materials", "material_specs")
 	t.Cleanup(pool.Close)
 
 	t.Run("creates a material and returns a generated ID", func(t *testing.T) {
@@ -88,7 +89,7 @@ func Test_PostgresRepository_Create(t *testing.T) {
 			t.Fatalf("Get() error = %v", err)
 		}
 
-		if stored != created {
+		if !reflect.DeepEqual(stored, created) {
 			t.Errorf(
 				"persisted material = %+v, want %+v",
 				stored,
@@ -100,7 +101,7 @@ func Test_PostgresRepository_Create(t *testing.T) {
 	t.Run("stores and returns each supported type", func(t *testing.T) {
 		for _, typ := range []Type{
 			Unspecified, RawMaterial, Packaging,
-			SemiFinished, FinishedProduct, SparePart,
+			SemiFinished, FinishedProduct, SparePart, Consumable,
 		} {
 			created, err := repository.Create(ctx, Material{
 				Name: "Typed Material",
@@ -168,12 +169,221 @@ func Test_PostgresRepository_Create(t *testing.T) {
 			t.Fatalf("Create() error = %v, want closed pool", err)
 		}
 	})
+
+	t.Run("rejects specs at creation", func(t *testing.T) {
+		_, err := repository.Create(ctx, Material{
+			Name:  "BOPP 20UM",
+			Type:  FinishedProduct,
+			Specs: Specs{{Name: "thickness", Value: "20 micron"}},
+		})
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("Create() error = %v, want ErrInvalid", err)
+		}
+	})
+}
+
+func Test_PostgresRepository_CreateWithSpecs(t *testing.T) {
+	ctx := context.Background()
+
+	repository, pool := testutil.NewRepository(t, NewPostgresRepository, "materials", "material_specs")
+	t.Cleanup(pool.Close)
+
+	t.Run("stores the material with its specs atomically", func(t *testing.T) {
+		input := Material{
+			Name: "BOPP 20UM",
+			Type: FinishedProduct,
+			Specs: Specs{
+				{Name: "thickness", Value: "20 micron"},
+				{Name: "tensile", Value: "130 MPa"},
+			},
+		}
+
+		created, err := repository.CreateWithSpecs(ctx, input)
+		if err != nil {
+			t.Fatalf("CreateWithSpecs() error = %v", err)
+		}
+
+		if created.ID == 0 {
+			t.Fatal("CreateWithSpecs() returned a zero ID")
+		}
+
+		stored, err := repository.Get(ctx, created.ID)
+		if err != nil {
+			t.Fatalf("Get() error = %v", err)
+		}
+
+		want := Specs{
+			{Name: "tensile", Value: "130 MPa"},
+			{Name: "thickness", Value: "20 micron"},
+		}
+		if !reflect.DeepEqual(stored.Specs, want) {
+			t.Errorf("Get() specs = %+v, want %+v in name order", stored.Specs, want)
+		}
+	})
+
+	t.Run("stores a material without specs", func(t *testing.T) {
+		created, err := repository.CreateWithSpecs(ctx, Material{
+			Name: "PP Resin",
+			Type: RawMaterial,
+		})
+		if err != nil {
+			t.Fatalf("CreateWithSpecs() error = %v", err)
+		}
+
+		stored, err := repository.Get(ctx, created.ID)
+		if err != nil {
+			t.Fatalf("Get() error = %v", err)
+		}
+
+		if len(stored.Specs) != 0 {
+			t.Errorf("Get() specs = %+v, want empty", stored.Specs)
+		}
+	})
+
+	t.Run("rejects invalid specs without storing anything", func(t *testing.T) {
+		_, err := repository.CreateWithSpecs(ctx, Material{
+			Name: "PP Resin",
+			Type: RawMaterial,
+			Specs: Specs{
+				{Name: "tensile", Value: "130 MPa"},
+			},
+		})
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("CreateWithSpecs() error = %v, want ErrInvalid", err)
+		}
+	})
+
+	t.Run("returns an error when the database is unavailable", func(t *testing.T) {
+		repository := testutil.NewClosedRepository(t, NewPostgresRepository)
+
+		_, err := repository.CreateWithSpecs(ctx, Material{
+			Name: "BOPP 20UM",
+			Type: FinishedProduct,
+			Specs: Specs{
+				{Name: "thickness", Value: "20 micron"},
+			},
+		})
+		if !errors.Is(err, puddle.ErrClosedPool) {
+			t.Fatalf("CreateWithSpecs() error = %v, want closed pool", err)
+		}
+	})
+}
+
+func Test_PostgresRepository_AddSpecs(t *testing.T) {
+	ctx := context.Background()
+
+	repository, pool := testutil.NewRepository(t, NewPostgresRepository, "materials", "material_specs")
+	t.Cleanup(pool.Close)
+
+	t.Run("attaches specs retrievable with the material", func(t *testing.T) {
+		created, err := repository.Create(ctx, Material{
+			Name: "BOPP 20UM",
+			Type: FinishedProduct,
+		})
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		specs := Specs{
+			{Name: "thickness", Value: "20 micron"},
+			{Name: "tensile", Value: "130 MPa"},
+		}
+		if err := repository.AddSpecs(ctx, created.ID, specs); err != nil {
+			t.Fatalf("AddSpecs() error = %v", err)
+		}
+
+		stored, err := repository.Get(ctx, created.ID)
+		if err != nil {
+			t.Fatalf("Get() error = %v", err)
+		}
+
+		want := Specs{
+			{Name: "tensile", Value: "130 MPa"},
+			{Name: "thickness", Value: "20 micron"},
+		}
+		if !reflect.DeepEqual(stored.Specs, want) {
+			t.Errorf("Get() specs = %+v, want %+v in name order", stored.Specs, want)
+		}
+	})
+
+	t.Run("accepts an empty set as a no-op", func(t *testing.T) {
+		created, err := repository.Create(ctx, Material{
+			Name: "BOPP 20UM",
+			Type: FinishedProduct,
+		})
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		if err := repository.AddSpecs(ctx, created.ID, nil); err != nil {
+			t.Fatalf("AddSpecs() error = %v, want nil", err)
+		}
+
+		stored, err := repository.Get(ctx, created.ID)
+		if err != nil {
+			t.Fatalf("Get() error = %v", err)
+		}
+
+		if len(stored.Specs) != 0 {
+			t.Errorf("Get() specs = %+v, want empty", stored.Specs)
+		}
+	})
+
+	t.Run("rejects specs outside the type profile", func(t *testing.T) {
+		created, err := repository.Create(ctx, Material{
+			Name: "PP Resin",
+			Type: RawMaterial,
+		})
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		err = repository.AddSpecs(ctx, created.ID, Specs{{Name: "tensile", Value: "130 MPa"}})
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("AddSpecs() error = %v, want ErrInvalid", err)
+		}
+	})
+
+	t.Run("rejects specs duplicating stored ones", func(t *testing.T) {
+		created, err := repository.Create(ctx, Material{
+			Name: "BOPP 20UM",
+			Type: FinishedProduct,
+		})
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+
+		if err := repository.AddSpecs(ctx, created.ID, Specs{{Name: "color", Value: "clear"}}); err != nil {
+			t.Fatalf("AddSpecs() error = %v", err)
+		}
+
+		err = repository.AddSpecs(ctx, created.ID, Specs{{Name: "Color", Value: "matte"}})
+		if !errors.Is(err, ErrInvalid) {
+			t.Fatalf("AddSpecs() error = %v, want ErrInvalid", err)
+		}
+	})
+
+	t.Run("returns ErrNotFound for a missing material", func(t *testing.T) {
+		err := repository.AddSpecs(ctx, 999999999, Specs{{Name: "thickness", Value: "20 micron"}})
+		if !errors.Is(err, ErrNotFound) {
+			t.Fatalf("AddSpecs() error = %v, want ErrNotFound", err)
+		}
+	})
+
+	t.Run("returns an error when the database is unavailable", func(t *testing.T) {
+		repository := testutil.NewClosedRepository(t, NewPostgresRepository)
+
+		err := repository.AddSpecs(ctx, 1, Specs{{Name: "thickness", Value: "20 micron"}})
+		if !errors.Is(err, puddle.ErrClosedPool) {
+			t.Fatalf("AddSpecs() error = %v, want closed pool", err)
+		}
+	})
 }
 
 func Test_PostgresRepository_Exists(t *testing.T) {
 	ctx := context.Background()
 
-	repository, pool := testutil.NewRepository(t, NewPostgresRepository, "materials")
+	repository, pool := testutil.NewRepository(t, NewPostgresRepository, "materials", "material_specs")
 	t.Cleanup(pool.Close)
 
 	t.Run("returns true for an existing material", func(t *testing.T) {
@@ -219,7 +429,7 @@ func Test_PostgresRepository_Exists(t *testing.T) {
 func Test_PostgresRepository_Get(t *testing.T) {
 	ctx := context.Background()
 
-	repository, pool := testutil.NewRepository(t, NewPostgresRepository, "materials")
+	repository, pool := testutil.NewRepository(t, NewPostgresRepository, "materials", "material_specs")
 	t.Cleanup(pool.Close)
 
 	t.Run("retrieves an existing material", func(t *testing.T) {
@@ -236,7 +446,7 @@ func Test_PostgresRepository_Get(t *testing.T) {
 			t.Fatalf("Get() error = %v", err)
 		}
 
-		if got != created {
+		if !reflect.DeepEqual(got, created) {
 			t.Errorf(
 				"Get() = %+v, want %+v",
 				got,
@@ -272,7 +482,7 @@ func Test_PostgresRepository_Get(t *testing.T) {
 func Test_PostgresRepository_Find(t *testing.T) {
 	ctx := context.Background()
 
-	repository, pool := testutil.NewRepository(t, NewPostgresRepository, "materials")
+	repository, pool := testutil.NewRepository(t, NewPostgresRepository, "materials", "material_specs")
 	t.Cleanup(pool.Close)
 
 	seed := func(t *testing.T, name string) Material {
@@ -311,7 +521,7 @@ func Test_PostgresRepository_Find(t *testing.T) {
 			t.Fatalf("Find() returned %d materials, want 2", len(got))
 		}
 
-		if got[0] != first || got[1] != second {
+		if !reflect.DeepEqual(got, []Material{first, second}) {
 			t.Errorf("Find() = %+v, want [%+v %+v]", got, first, second)
 		}
 	})
@@ -345,7 +555,7 @@ func Test_PostgresRepository_Find(t *testing.T) {
 			t.Fatalf("Find() error = %v", err)
 		}
 
-		if len(got) != 2 || got[0] != first || got[1] != second {
+		if !reflect.DeepEqual(got, []Material{first, second}) {
 			t.Fatalf("Find() = %+v, want [%+v %+v]", got, first, second)
 		}
 	})
@@ -377,7 +587,7 @@ func Test_PostgresRepository_Find(t *testing.T) {
 		}
 
 		for i, want := range created[:10] {
-			if got[i] != want {
+			if !reflect.DeepEqual(got[i], want) {
 				t.Fatalf("Find()[%d] = %+v, want %+v", i, got[i], want)
 			}
 		}
@@ -406,7 +616,7 @@ func Test_PostgresRepository_Find(t *testing.T) {
 		}
 
 		for i, want := range ranged {
-			if got[i] != want {
+			if !reflect.DeepEqual(got[i], want) {
 				t.Fatalf("Find()[%d] = %+v, want %+v", i, got[i], want)
 			}
 		}
@@ -429,7 +639,7 @@ func Test_PostgresRepository_Find(t *testing.T) {
 			t.Fatalf("Find() error = %v", err)
 		}
 
-		if len(got) != 1 || got[0] != want {
+		if !reflect.DeepEqual(got, []Material{want}) {
 			t.Fatalf("Find() = %+v, want [%+v]", got, want)
 		}
 	})
@@ -443,7 +653,7 @@ func Test_PostgresRepository_Find(t *testing.T) {
 			t.Fatalf("Find() error = %v", err)
 		}
 
-		if len(got) != 2 || got[0] != first || got[1] != second {
+		if !reflect.DeepEqual(got, []Material{first, second}) {
 			t.Fatalf("Find() = %+v, want both matches unpicked", got)
 		}
 	})
@@ -457,7 +667,7 @@ func Test_PostgresRepository_Find(t *testing.T) {
 			t.Fatalf("Find() error = %v", err)
 		}
 
-		if len(got) != 2 || got[0] != first || got[1] != second {
+		if !reflect.DeepEqual(got, []Material{first, second}) {
 			t.Fatalf("Find() = %+v, want both matches for confirm step", got)
 		}
 	})

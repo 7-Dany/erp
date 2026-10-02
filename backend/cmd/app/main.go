@@ -48,19 +48,19 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Created: %+v\n", created)
+	fmt.Printf("--- create ---\n%+v\n", created)
 
 	exists, err := repository.Exists(ctx, created.ID)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Exists(%d): %v\n", created.ID, exists)
+	fmt.Printf("--- exists ---\nExists(%d): %v\n", created.ID, exists)
 
 	stored, err := repository.Get(ctx, created.ID)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Get(%d): %+v\n", created.ID, stored)
+	fmt.Printf("--- get ---\nGet(%d): %+v\n", created.ID, stored)
 
 	for _, name := range []string{"Demo BOPP 20UM", "Demo BOPP Film", "Demo Copper Wire"} {
 		if _, err := repository.Create(ctx, material.Material{
@@ -75,17 +75,54 @@ func run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Find(%q): %+v\n", "bopp", matches)
+	fmt.Printf("--- find %q (%d matches) ---\n", "bopp", len(matches))
+	for _, match := range matches {
+		fmt.Printf("  %+v\n", match)
+	}
 
 	none, err := repository.Find(ctx, material.Query{Term: "no-such-demo-xyz"})
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Find(%q): %+v\n", "no-such-demo-xyz", none)
+	fmt.Printf("--- find %q (%d matches) ---\n", "no-such-demo-xyz", len(none))
 
 	if _, err := repository.Find(ctx, material.Query{Term: " "}); err != nil {
-		fmt.Printf("Find(blank): %v\n", err)
+		fmt.Printf("--- find blank ---\n%v\n", err)
 	}
+
+	withSpecs, err := repository.CreateWithSpecs(ctx, material.Material{
+		Name: "Demo BOPP 20UM",
+		Type: material.FinishedProduct,
+		Specs: material.Specs{
+			{Name: "thickness", Value: "20 micron"},
+			{Name: "tensile", Value: "130 MPa"},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("--- create with specs ---\n%+v\n", withSpecs)
+
+	bare, err := repository.Create(ctx, material.Material{
+		Name: "Demo PP Resin",
+		Type: material.RawMaterial,
+	})
+	if err != nil {
+		return err
+	}
+
+	if err := repository.AddSpecs(ctx, bare.ID, material.Specs{
+		{Name: "grade", Value: "HOMO-25"},
+		{Name: "mfi", Value: "3 g/10min"},
+	}); err != nil {
+		return err
+	}
+
+	full, err := repository.Get(ctx, bare.ID)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("--- get with specs ---\nGet(%d): %+v\n", bare.ID, full)
 
 	return nil
 }
